@@ -1035,6 +1035,20 @@ static void read_encryption_key_size_complete_after_encryption_change(uint8_t st
     return;
   }
 
+  if (btm_sec_is_session_key_size_downgrade(handle, key_size)) {
+    LOG_ERROR(
+        "encryption key size lower than cached value, disconnecting. "
+        "handle: 0x%x attempted key size: %d",
+        handle, key_size);
+    acl_disconnect_from_handle(
+        handle, HCI_ERR_HOST_REJECT_SECURITY,
+        "stack::btu::btu_hcif::read_encryption_key_size_complete_after_"
+        "encryption_change Key Size Downgrade");
+    return;
+  }
+
+  btm_sec_update_session_key_size(handle, key_size);
+
   // good key size - succeed
   btm_acl_encrypt_change(handle, static_cast<tHCI_STATUS>(status),
                          1 /* enable */);
@@ -1690,6 +1704,12 @@ static void btu_ble_data_length_change_evt(uint8_t* p, uint16_t evt_len) {
 
   if (!controller_get_interface()->supports_ble_packet_extension()) {
     HCI_TRACE_WARNING("%s, request not supported", __func__);
+    return;
+  }
+
+  // 2 bytes each for handle, tx_data_len, TxTimer, rx_data_len
+  if (evt_len < 8) {
+    LOG_ERROR("Event packet too short");
     return;
   }
 
